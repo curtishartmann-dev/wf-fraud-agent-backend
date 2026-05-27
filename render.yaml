@@ -1,0 +1,18 @@
+# Render Blueprint — deploy with one click via "New +" → "Blueprint" in Render.
+# Point Render at the GitHub repo containing this file and it provisions the service.
+services:
+  - type: web
+    name: wf-fraud-agent-backend
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SIMULATED_LATENCY_MS
+        value: "120"

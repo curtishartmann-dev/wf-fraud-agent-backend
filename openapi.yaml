@@ -1,0 +1,529 @@
+openapi: 3.0.3
+info:
+  title: Wells Fargo Front-Line Fraud-Aware Virtual Agent — Tool Backend
+  description: |
+    Simulated backend for the Wells Fargo Front-Line Fraud-Aware Virtual Agent deployed
+    on RingCentral AIR Pro / Nova. This service implements the integration endpoints
+    (Pindrop, Featurespace ARIC, NICE Nexidia) and Wells Fargo internal workflow
+    endpoints that the agent calls during a customer voice session.
+
+    All endpoints return deterministic simulated data keyed by phone number so demo
+    flows can be scripted reliably.
+
+    Demo personas (lookup by phone number):
+      +15558675309 — Eleanor Martinez, active scam in progress (HIGH risk)
+      +12125555550 — Robert Johnson, new payee Zelle (MEDIUM risk)
+      +14155551234 — James Chen, routine bill pay (LOW risk)
+      +13105557777 — Maria Garcia, routine Zelle to family (LOW risk)
+  version: 1.0.0
+  contact:
+    name: RingCentral AIR Pro / Nova
+servers:
+  - url: https://wf-fraud-agent-backend.onrender.com
+    description: Render.com hosted demo
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: pindrop
+    description: Pindrop caller risk + device intelligence
+  - name: featurespace
+    description: Featurespace ARIC behavioral analytics
+  - name: nice
+    description: NICE Nexidia voice analytics + evidence packaging
+  - name: workflows
+    description: Wells Fargo internal workflows (transfer, auth, session lifecycle)
+
+paths:
+  /pindrop/caller-risk:
+    post:
+      tags: [pindrop]
+      operationId: getCallerRisk
+      summary: Fetch Pindrop caller risk and device intelligence
+      description: Returns risk score, level, and reason codes for the inbound caller's phone number + device fingerprint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallerRiskRequest'
+      responses:
+        '200':
+          description: Caller risk assessment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallerRiskResponse'
+
+  /featurespace/baseline:
+    post:
+      tags: [featurespace]
+      operationId: getBehavioralBaseline
+      summary: Fetch Featurespace ARIC behavioral baseline and compute proposed-action delta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BaselineRequest'
+      responses:
+        '200':
+          description: Behavioral baseline + delta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaselineResponse'
+
+  /nice/voice-analytics:
+    post:
+      tags: [nice]
+      operationId: getVoiceAnalytics
+      summary: NICE Nexidia voice analytics on the live call audio
+      description: Returns coached-speech detection, multi-voice presence, stress score, and sentiment for the call segment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoiceAnalyticsRequest'
+      responses:
+        '200':
+          description: Voice analytics findings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceAnalyticsResponse'
+
+  /nice/package-evidence:
+    post:
+      tags: [nice]
+      operationId: packageVoiceEvidence
+      summary: Package voice evidence for a fraud case
+      description: Bundles call audio, transcript, and signal log into an evidence package referenced by case management.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidencePackageRequest'
+      responses:
+        '200':
+          description: Evidence package ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidencePackageResponse'
+
+  /workflow/session-init:
+    post:
+      tags: [workflows]
+      operationId: sessionInit
+      summary: Initialize a call session — pre-fetch risk + baseline + recent flags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionInitRequest'
+      responses:
+        '200':
+          description: Session initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInitResponse'
+
+  /workflow/session-close:
+    post:
+      tags: [workflows]
+      operationId: sessionClose
+      summary: Close session, persist signal_log, write case-management record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCloseRequest'
+      responses:
+        '200':
+          description: Case persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionCloseResponse'
+
+  /workflow/warm-transfer:
+    post:
+      tags: [workflows]
+      operationId: warmTransfer
+      summary: Warm-transfer caller to a specialized human fraud banker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WarmTransferRequest'
+      responses:
+        '200':
+          description: Transfer queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WarmTransferResponse'
+
+  /workflow/safe-handoff:
+    post:
+      tags: [workflows]
+      operationId: safeHandoff
+      summary: Generic safe-handoff fallback to a human banker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SafeHandoffRequest'
+      responses:
+        '200':
+          description: Handoff queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafeHandoffResponse'
+
+  /workflow/mfa:
+    post:
+      tags: [workflows]
+      operationId: mfa
+      summary: Verify a single MFA factor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MfaRequest'
+      responses:
+        '200':
+          description: Updated authentication state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MfaResponse'
+
+  /workflow/account-summary:
+    get:
+      tags: [workflows]
+      operationId: getAccountSummary
+      summary: Read-only account summary (post-auth)
+      parameters:
+        - in: query
+          name: customerId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: x-auth-state
+          required: true
+          description: Must be 'full_mfa'
+          schema: { type: string, enum: [unauth, partial_mfa, full_mfa] }
+      responses:
+        '200':
+          description: Account summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummaryResponse'
+        '403':
+          description: Forbidden — authentication_state must be full_mfa
+
+  /workflow/intent-router:
+    post:
+      tags: [workflows]
+      operationId: routeIntent
+      summary: Route an authenticated low-risk caller to the appropriate downstream skill or queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntentRouterRequest'
+      responses:
+        '200':
+          description: Routing decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentRouterResponse'
+
+  /health:
+    get:
+      tags: [workflows]
+      operationId: health
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+
+components:
+  schemas:
+    CallerRiskRequest:
+      type: object
+      required: [phoneNumber, callId]
+      properties:
+        phoneNumber:
+          type: string
+          example: "+15558675309"
+        callId:
+          type: string
+          example: "call_abc123"
+        deviceFingerprint:
+          type: string
+
+    CallerRiskResponse:
+      type: object
+      required: [score, level, reasonCodes, callId]
+      properties:
+        callId: { type: string }
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        level:
+          type: string
+          enum: [low, medium, high]
+        reasonCodes:
+          type: array
+          items: { type: string }
+        deviceFingerprintMatch: { type: boolean }
+        aniValidation:
+          type: string
+          enum: [valid, spoofed, anonymous, unknown]
+        voipAnonymizer: { type: boolean }
+        firstSeen: { type: string, format: date-time }
+
+    BaselineRequest:
+      type: object
+      required: [customerId, proposedAction]
+      properties:
+        customerId: { type: string }
+        callId: { type: string }
+        proposedAction:
+          $ref: '#/components/schemas/ProposedAction'
+
+    ProposedAction:
+      type: object
+      required: [type, amountUsd, payee]
+      properties:
+        type:
+          type: string
+          enum: [zelle, wire, ach, bill_pay, internal_transfer, other]
+        amountUsd: { type: number }
+        payee: { type: string }
+        destinationState: { type: string }
+        firstTimePayee: { type: boolean }
+
+    BaselineResponse:
+      type: object
+      required: [baselineScore, proposedDelta, threshold, anomalyFlags]
+      properties:
+        baselineScore: { type: number, description: "Customer's typical-activity score 0–100" }
+        proposedDelta: { type: number, description: "Standard deviations from baseline" }
+        threshold: { type: number, description: "Anomaly threshold (default 2.0 sigma)" }
+        anomalyFlags:
+          type: array
+          items: { type: string }
+        signal:
+          type: string
+          enum: [none, featurespace_baseline_deviation]
+
+    VoiceAnalyticsRequest:
+      type: object
+      required: [callId]
+      properties:
+        callId: { type: string }
+        phoneNumber: { type: string }
+        windowSeconds:
+          type: integer
+          default: 30
+
+    VoiceAnalyticsResponse:
+      type: object
+      required: [callId, coachedSpeech, multiVoiceDetected, stressScore]
+      properties:
+        callId: { type: string }
+        coachedSpeech: { type: boolean }
+        multiVoiceDetected: { type: boolean }
+        stressScore: { type: number, minimum: 0, maximum: 1 }
+        sentiment:
+          type: string
+          enum: [neutral, anxious, distressed, calm]
+        keywordsDetected:
+          type: array
+          items: { type: string }
+        signals:
+          type: array
+          items: { type: string }
+
+    EvidencePackageRequest:
+      type: object
+      required: [callId, signalLog]
+      properties:
+        callId: { type: string }
+        signalLog:
+          type: array
+          items: { $ref: '#/components/schemas/SignalLogEntry' }
+
+    SignalLogEntry:
+      type: object
+      required: [signal, verbatimTrigger, confidence, frameworkRule]
+      properties:
+        signal: { type: string }
+        verbatimTrigger: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        frameworkRule: { type: string }
+        timestamp: { type: string, format: date-time }
+
+    EvidencePackageResponse:
+      type: object
+      required: [evidencePackageId, url]
+      properties:
+        evidencePackageId: { type: string }
+        url: { type: string, format: uri }
+        sizeBytes: { type: integer }
+
+    SessionInitRequest:
+      type: object
+      required: [callId, phoneNumber]
+      properties:
+        callId: { type: string }
+        phoneNumber: { type: string }
+
+    SessionInitResponse:
+      type: object
+      required: [sessionId, customerId, callerRisk, recentFlags]
+      properties:
+        sessionId: { type: string }
+        customerId: { type: string }
+        customerNameMasked: { type: string }
+        callerRisk: { $ref: '#/components/schemas/CallerRiskResponse' }
+        recentFlags:
+          type: array
+          description: Recent Actimize / case-mgmt flags on this customer
+          items: { type: string }
+        authenticationState:
+          type: string
+          enum: [unauth, partial_mfa, full_mfa]
+
+    SessionCloseRequest:
+      type: object
+      required: [callId, sessionId, riskScoreFinal, signalLog]
+      properties:
+        callId: { type: string }
+        sessionId: { type: string }
+        riskScoreFinal:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        signalLog:
+          type: array
+          items: { $ref: '#/components/schemas/SignalLogEntry' }
+        outcome:
+          type: string
+          enum: [resolved, warm_transferred, safe_handoff, dropped]
+
+    SessionCloseResponse:
+      type: object
+      required: [caseId, persistedAt]
+      properties:
+        caseId: { type: string }
+        persistedAt: { type: string, format: date-time }
+
+    WarmTransferRequest:
+      type: object
+      required: [callId, riskScore, signalSummary]
+      properties:
+        callId: { type: string }
+        riskScore:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        signalSummary: { type: string }
+        signalLog:
+          type: array
+          items: { $ref: '#/components/schemas/SignalLogEntry' }
+        evidencePackageId: { type: string }
+
+    WarmTransferResponse:
+      type: object
+      required: [transferId, queue, etaSeconds]
+      properties:
+        transferId: { type: string }
+        queue: { type: string }
+        etaSeconds: { type: integer }
+        bankerHandle: { type: string }
+
+    SafeHandoffRequest:
+      type: object
+      required: [callId, reason]
+      properties:
+        callId: { type: string }
+        reason: { type: string }
+
+    SafeHandoffResponse:
+      type: object
+      required: [handoffId, queue]
+      properties:
+        handoffId: { type: string }
+        queue: { type: string }
+        etaSeconds: { type: integer }
+
+    MfaRequest:
+      type: object
+      required: [customerId, factor, value]
+      properties:
+        customerId: { type: string }
+        factor:
+          type: string
+          enum: [voice_print, otp_sms, kba, device_attestation]
+        value: { type: string, description: "Factor-specific value (e.g., OTP code or KBA answer)" }
+
+    MfaResponse:
+      type: object
+      required: [authenticationState, factorsSatisfied, factorsRemaining]
+      properties:
+        authenticationState:
+          type: string
+          enum: [unauth, partial_mfa, full_mfa]
+        factorsSatisfied:
+          type: array
+          items: { type: string }
+        factorsRemaining:
+          type: array
+          items: { type: string }
+        failureCount: { type: integer }
+
+    AccountSummaryResponse:
+      type: object
+      required: [customerId, accounts]
+      properties:
+        customerId: { type: string }
+        accounts:
+          type: array
+          items:
+            type: object
+            properties:
+              accountNumberMasked: { type: string }
+              type: { type: string }
+              balanceUsd: { type: number }
+              lastActivity: { type: string, format: date-time }
+
+    IntentRouterRequest:
+      type: object
+      required: [callId, intent]
+      properties:
+        callId: { type: string }
+        intent: { type: string }
+
+    IntentRouterResponse:
+      type: object
+      required: [route, queue]
+      properties:
+        route: { type: string }
+        queue: { type: string }
+        rationale: { type: string }
