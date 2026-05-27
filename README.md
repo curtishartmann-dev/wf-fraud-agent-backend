@@ -23,8 +23,6 @@ MFA correct value for any factor in demos: `DEMO_PASS`. Other values count as fa
 |---|---|---|
 | Pindrop | `POST /pindrop/caller-risk` | Caller risk + device intelligence |
 | Featurespace | `POST /featurespace/baseline` | ARIC behavioral baseline + delta |
-| NICE Nexidia | `POST /nice/voice-analytics` | Coached speech, multi-voice, stress, sentiment |
-| NICE Nexidia | `POST /nice/package-evidence` | Bundle voice + signal log into evidence package |
 | Workflow | `POST /workflow/session-init` | Initialize call session, prefetch context |
 | Workflow | `POST /workflow/session-close` | Persist signal log + create case record |
 | Workflow | `POST /workflow/warm-transfer` | Warm-transfer to a fraud banker |
